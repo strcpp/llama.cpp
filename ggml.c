@@ -2339,7 +2339,7 @@ static void ggml_vec_dot_q4_0_q8_0(const int n, float * restrict s, const void *
     __m256 acc = _mm256_setzero_ps();
 
 
-#if 0
+#if 1
     for (int i = 0; i < nb; ++i) {
         /* Compute combined scale for the block */
         const __m256 d = _mm256_set1_ps(GGML_FP16_TO_FP32(x[i].d) * GGML_FP16_TO_FP32(y[i].d));
