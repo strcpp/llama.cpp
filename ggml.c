@@ -16241,38 +16241,53 @@ struct ggml_compute_state {
     struct ggml_compute_state_shared * shared;
 };
 
-static thread_ret_t ggml_graph_compute_thread(void * data) {
-    struct ggml_compute_state * state = (struct ggml_compute_state *) data;
+static thread_ret_t ggml_graph_compute_thread(void* data) {
+    struct ggml_compute_state* state = (struct ggml_compute_state*)data;
 
     const int n_threads = state->shared->n_threads;
+    bool stop = false;
 
     while (true) {
         if (atomic_fetch_add(&state->shared->n_ready, 1) == n_threads - 1) {
             atomic_store(&state->shared->has_work, false);
-        } else {
+        }
+        else {
+            ggml_lock_lock(&state->shared->spin);
+            ggml_lock_unlock(&state->shared->spin);
+
             while (atomic_load(&state->shared->has_work)) {
-                if (atomic_load(&state->shared->stop)) {
+                if (stop)
+                {
                     return 0;
                 }
-                ggml_lock_lock  (&state->shared->spin);
+                ggml_lock_lock(&state->shared->spin);
                 ggml_lock_unlock(&state->shared->spin);
             }
         }
 
         atomic_fetch_sub(&state->shared->n_ready, 1);
 
-        // wait for work
+        // Wait for work
+        ggml_lock_lock(&state->shared->spin);
+        ggml_lock_unlock(&state->shared->spin);
+
         while (!atomic_load(&state->shared->has_work)) {
-            if (atomic_load(&state->shared->stop)) {
+            if (stop)
+            {
                 return 0;
             }
-            ggml_lock_lock  (&state->shared->spin);
+            ggml_lock_lock(&state->shared->spin);
             ggml_lock_unlock(&state->shared->spin);
         }
 
-        // check if we should stop
-        if (atomic_load(&state->shared->stop)) {
-            break;
+        // Check if we should stop
+        ggml_lock_lock(&state->shared->spin);
+        stop = atomic_load(&state->shared->stop);
+        ggml_lock_unlock(&state->shared->spin);
+
+        if (stop)
+        {
+            return 0;
         }
 
         if (state->node) {
@@ -16281,8 +16296,10 @@ static thread_ret_t ggml_graph_compute_thread(void * data) {
             }
 
             state->node = NULL;
-        } else {
-            break;
+        }
+        else
+        {
+            return 0;
         }
     }
 

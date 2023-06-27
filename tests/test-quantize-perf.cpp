@@ -1,5 +1,3 @@
-// Benchmark quantization specific functions on synthetic data
-
 #include "ggml.h"
 
 #undef NDEBUG
@@ -39,12 +37,12 @@ struct quantize_perf_params {
 };
 
 
-#if defined(__x86_64__) || defined(__i386__)
+#if defined(_x86_64) || defined(__i386_)
 
 #include <x86intrin.h>
 inline int64_t cpu_cycles() {
-// Rough way to detect new-ish CPUs
-#ifdef __POPCNT__
+    // Rough way to detect new-ish CPUs
+#ifdef _POPCNT_
     unsigned int dummy;
     return __rdtscp(&dummy);
 #else
@@ -63,19 +61,19 @@ inline int64_t cpu_cycles() {
 
 
 // Generate synthetic data
-void generate_data(float offset, size_t n, float * dst) {
+void generate_data(float offset, size_t n, float* dst) {
     for (size_t i = 0; i < n; i++) {
-        dst[i] = 0.1 + 2*cosf(i + offset);
+        dst[i] = 0.1 + 2 * cosf(i + offset);
     }
 }
 
 float gigabytes_per_second(size_t bytes, int64_t usecs) {
-    return bytes / (float) usecs * 1000000 / (1024*1024*1024);
+    return bytes / (float)usecs * 1000000 / (1024 * 1024 * 1024);
 }
 
-void * align_with_offset(void * ptr, int offset) {
+void* align_with_offset(void* ptr, int offset) {
     size_t dummy_size = MAX_ALIGNMENT * 4;
-    return (char *) std::align(MAX_ALIGNMENT, MAX_ALIGNMENT, ptr, dummy_size) + offset;
+    return (char*)std::align(MAX_ALIGNMENT, MAX_ALIGNMENT, ptr, dummy_size) + offset;
 }
 
 void benchmark_function(size_t size, size_t q_size, std::function<size_t(void)> function) {
@@ -104,14 +102,14 @@ void benchmark_function(size_t size, size_t q_size, std::function<size_t(void)> 
         min_time_us = std::min(min_time_us, end_time - start_time);
     }
 
-    printf("      min cycles/%d vals   : %9.2f\n",  QK, QK * min_time_cycles / (float) size);
-    printf("      avg cycles/%d vals   : %9.2f\n",  QK, QK * total_time_cycles / (float) (size * ITERATIONS));
-    printf("      float32 throughput   : %9.2f GB/s\n",  gigabytes_per_second(4 * size * ITERATIONS, total_time_us));
-    printf("      quantized throughput : %9.2f GB/s\n",  gigabytes_per_second(q_size * ITERATIONS, total_time_us));
+    printf("      min cycles/%d vals   : %9.2f\n", QK, QK * min_time_cycles / (float)size);
+    printf("      avg cycles/%d vals   : %9.2f\n", QK, QK * total_time_cycles / (float)(size * ITERATIONS));
+    printf("      float32 throughput   : %9.2f GB/s\n", gigabytes_per_second(4 * size * ITERATIONS, total_time_us));
+    printf("      quantized throughput : %9.2f GB/s\n", gigabytes_per_second(q_size * ITERATIONS, total_time_us));
 }
 
-int main(int argc, char * argv[]) {
-    quantize_perf_params params {};
+int main(int argc, char* argv[]) {
+    quantize_perf_params params{};
 
     // read command line
 
@@ -132,56 +130,67 @@ int main(int argc, char * argv[]) {
                 break;
             }
             params.test_sizes.push_back(size);
-        } else if (arg == "-3") {
+        }
+        else if (arg == "-3") {
             // quick select sizes that probably fit in CPU caches
             params.test_sizes.push_back(L1_SIZE);
             params.test_sizes.push_back(L2_SIZE);
             params.test_sizes.push_back(L3_SIZE);
-        } else if (arg == "-4") {
+        }
+        else if (arg == "-4") {
             // quick select cache sizes + memory
             params.test_sizes.push_back(L1_SIZE);
             params.test_sizes.push_back(L2_SIZE);
             params.test_sizes.push_back(L3_SIZE);
             params.test_sizes.push_back(MEM_SIZE);
-        } else if (arg == "--op") {
+        }
+        else if (arg == "--op") {
             if (++i >= argc) {
                 invalid_param = true;
                 break;
             }
-            std::string op {argv[i]};
+            std::string op{ argv[i] };
             if (op == "quantize_row_q_reference") {
                 params.op_quantize_row_q_reference = true;
-            } else if (op == "quantize_row_q") {
+            }
+            else if (op == "quantize_row_q") {
                 params.op_quantize_row_q = true;
-            } else if (op == "dequantize_row_q") {
+            }
+            else if (op == "dequantize_row_q") {
                 params.op_dequantize_row_q = true;
-            } else if (op == "quantize_row_q_dot") {
+            }
+            else if (op == "quantize_row_q_dot") {
                 params.op_quantize_row_q_dot = true;
-            } else if (op == "vec_dot_q") {
+            }
+            else if (op == "vec_dot_q") {
                 params.op_vec_dot_q = true;
-            } else {
+            }
+            else {
                 invalid_param = true;
                 break;
             }
-        } else if (arg == "--type") {
+        }
+        else if (arg == "--type") {
             if (++i >= argc) {
                 invalid_param = true;
                 break;
             }
             params.include_types.push_back(argv[i]);
-        } else if (arg == "--alignment-offset") {
+        }
+        else if (arg == "--alignment-offset") {
             if (++i >= argc) {
                 invalid_param = true;
                 break;
             }
             int alignment = std::stoi(argv[i]);
             if (alignment < 0 || alignment > MAX_ALIGNMENT) {
-            fprintf(stderr, "error: aligment-offset must be less than %d\n", MAX_ALIGNMENT);
+                fprintf(stderr, "error: aligment-offset must be less than %d\n", MAX_ALIGNMENT);
                 invalid_param = true;
                 break;
             }
             params.alignment_offset = alignment;
-        } else {
+        }
+        else {
             fprintf(stderr, "error: unknown argument: %s\n", arg.c_str());
             return 1;
         }
@@ -201,17 +210,17 @@ int main(int argc, char * argv[]) {
     std::sort(params.test_sizes.begin(), params.test_sizes.end());
     size_t largest = params.test_sizes.back();
 
-    std::vector<uint8_t> test_data1_v(largest*4 + MAX_ALIGNMENT*2);
-    std::vector<uint8_t> test_data2_v(largest*4 + MAX_ALIGNMENT*2);
-    std::vector<uint8_t> test_q1_v(largest*4 + MAX_ALIGNMENT*2);
-    std::vector<uint8_t> test_q2_v(largest*4 + MAX_ALIGNMENT*2);
-    std::vector<uint8_t> test_out_v(largest*4 + MAX_ALIGNMENT*2);
+    std::vector<uint8_t> test_data1_v(largest * 4 + MAX_ALIGNMENT * 2);
+    std::vector<uint8_t> test_data2_v(largest * 4 + MAX_ALIGNMENT * 2);
+    std::vector<uint8_t> test_q1_v(largest * 4 + MAX_ALIGNMENT * 2);
+    std::vector<uint8_t> test_q2_v(largest * 4 + MAX_ALIGNMENT * 2);
+    std::vector<uint8_t> test_out_v(largest * 4 + MAX_ALIGNMENT * 2);
 
-    float * test_data1 = (float *) align_with_offset(test_data1_v.data(), params.alignment_offset);
-    float * test_data2 = (float *) align_with_offset(test_data2_v.data(), params.alignment_offset);
-    float * test_q1 = (float *) align_with_offset(test_q1_v.data(), params.alignment_offset);
-    float * test_q2 = (float *) align_with_offset(test_q2_v.data(), params.alignment_offset);
-    float * test_out = (float *) align_with_offset(test_out_v.data(), params.alignment_offset);
+    float* test_data1 = (float*)align_with_offset(test_data1_v.data(), params.alignment_offset);
+    float* test_data2 = (float*)align_with_offset(test_data2_v.data(), params.alignment_offset);
+    float* test_q1 = (float*)align_with_offset(test_q1_v.data(), params.alignment_offset);
+    float* test_q2 = (float*)align_with_offset(test_q2_v.data(), params.alignment_offset);
+    float* test_out = (float*)align_with_offset(test_out_v.data(), params.alignment_offset);
 
     generate_data(0, largest, test_data1);
     generate_data(1, largest, test_data2);
@@ -219,14 +228,14 @@ int main(int argc, char * argv[]) {
 
     // Initialize GGML, ensures float conversion tables are initialized
     struct ggml_init_params ggml_params = {
-        /* .mem_size   = */ 1*1024,
+        /* .mem_size   = */ 1 * 1024,
         /* .mem_buffer = */ NULL,
         /* .no_alloc   = */ true,
     };
-    struct ggml_context * ctx = ggml_init(ggml_params);
+    struct ggml_context* ctx = ggml_init(ggml_params);
 
     for (int i = 0; i < GGML_TYPE_COUNT; i++) {
-        ggml_type type = (ggml_type) i;
+        ggml_type type = (ggml_type)i;
 
         if (type == GGML_TYPE_Q4_0) {
 
