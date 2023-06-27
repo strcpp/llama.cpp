@@ -53,8 +53,11 @@ inline int64_t cpu_cycles() {
 }
 
 #else
+#include <intrin.h>
 
-#define cpu_cycles() 0
+#pragma intrinsic(__rdtsc)
+
+#define cpu_cycles() __rdtsc()
 
 #endif
 
@@ -224,86 +227,90 @@ int main(int argc, char * argv[]) {
 
     for (int i = 0; i < GGML_TYPE_COUNT; i++) {
         ggml_type type = (ggml_type) i;
-        quantize_fns_t qfns = ggml_internal_get_quantize_fn(i);
-        if (!params.include_types.empty() && std::find(params.include_types.begin(), params.include_types.end(), ggml_type_name(type)) == params.include_types.end()) {
-            continue;
-        }
 
-        if (qfns.quantize_row_q && qfns.dequantize_row_q) {
-            printf("%s\n", ggml_type_name(type));
+        if (type == GGML_TYPE_Q4_0) {
 
-            if (params.op_quantize_row_q_reference) {
-                printf("  quantize_row_q_reference\n");
-                for (size_t size : params.test_sizes) {
-                    printf("    %zu values (%.2f MB)\n", size, 4*size/(float)(1024*1024));
-                    auto quantize_fn = [&](void ) {
-                        qfns.quantize_row_q_reference(test_data1, test_q1, size);
-                        return test_q1[0];
-                    };
-                    size_t quantized_size = size / ggml_blck_size(type) * ggml_type_size(type);
-                    benchmark_function(size, quantized_size, quantize_fn);
-                }
-                printf("\n");
+            quantize_fns_t qfns = ggml_internal_get_quantize_fn(i);
+            if (!params.include_types.empty() && std::find(params.include_types.begin(), params.include_types.end(), ggml_type_name(type)) == params.include_types.end()) {
+                continue;
             }
 
-            if (params.op_quantize_row_q) {
-                printf("  quantize_row_q\n");
-                for (size_t size : params.test_sizes) {
-                    printf("    %zu values (%.2f MB)\n", size, 4*size/(float)(1024*1024));
-                    auto quantize_fn = [&](void ) {
-                        qfns.quantize_row_q(test_data1, test_q1, size);
-                        return test_q1[0];
-                    };
-                    size_t quantized_size = size / ggml_blck_size(type) * ggml_type_size(type);
-                    benchmark_function(size, quantized_size, quantize_fn);
-                }
-                printf("\n");
-            }
+            if (qfns.quantize_row_q && qfns.dequantize_row_q) {
+                printf("%s\n", ggml_type_name(type));
 
-            if (params.op_dequantize_row_q) {
-                printf("  dequantize_row_q\n");
-                qfns.quantize_row_q(test_data1, test_q1, largest);
-                for (size_t size : params.test_sizes) {
-                    printf("    %zu values (%.2f MB)\n", size, 4*size/(float)(1024*1024));
-                    auto quantize_fn = [&](void ) {
-                        qfns.dequantize_row_q(test_q1, test_out, size);
-                        return test_out[0];
-                    };
-                    size_t quantized_size = size / ggml_blck_size(type) * ggml_type_size(type);
-                    benchmark_function(size, quantized_size, quantize_fn);
-                }
-                printf("\n");
-            }
+                //if (params.op_quantize_row_q_reference) {
+                //    printf("  quantize_row_q_reference\n");
+                //    for (size_t size : params.test_sizes) {
+                //        printf("    %zu values (%.2f MB)\n", size, 4 * size / (float)(1024 * 1024));
+                //        auto quantize_fn = [&](void) {
+                //            qfns.quantize_row_q_reference(test_data1, test_q1, size);
+                //            return test_q1[0];
+                //        };
+                //        size_t quantized_size = size / ggml_blck_size(type) * ggml_type_size(type);
+                //        benchmark_function(size, quantized_size, quantize_fn);
+                //    }
+                //    printf("\n");
+                //}
 
-            if (params.op_quantize_row_q_dot) {
-                printf("  quantize_row_q_dot\n");
-                for (size_t size : params.test_sizes) {
-                    printf("    %zu values (%.2f MB)\n", size, 4*size/(float)(1024*1024));
-                    auto quantize_fn = [&](void ) {
-                        qfns.quantize_row_q_dot(test_data1, test_q1, size);
-                        return test_q1[0];
-                    };
-                    size_t quantized_size = size / ggml_blck_size(type) * ggml_type_size(type);
-                    benchmark_function(size, quantized_size, quantize_fn);
-                }
-                printf("\n");
-            }
+                //if (params.op_quantize_row_q) {
+                //    printf("  quantize_row_q\n");
+                //    for (size_t size : params.test_sizes) {
+                //        printf("    %zu values (%.2f MB)\n", size, 4 * size / (float)(1024 * 1024));
+                //        auto quantize_fn = [&](void) {
+                //            qfns.quantize_row_q(test_data1, test_q1, size);
+                //            return test_q1[0];
+                //        };
+                //        size_t quantized_size = size / ggml_blck_size(type) * ggml_type_size(type);
+                //        benchmark_function(size, quantized_size, quantize_fn);
+                //    }
+                //    printf("\n");
+                //}
 
-            if (params.op_vec_dot_q) {
-                printf("  vec_dot_q\n");
-                qfns.quantize_row_q(test_data1, test_q1, largest);
-                qfns.quantize_row_q(test_data2, test_q2, largest);
-                for (size_t size : params.test_sizes) {
-                    printf("    %zu values (%.2f MB)\n", size, 4*size/(float)(1024*1024));
-                    auto quantize_fn = [&](void ) {
-                        float result;
-                        qfns.vec_dot_q(size, &result, test_q1, test_q2);
-                        return result;
-                    };
-                    size_t quantized_size = size / ggml_blck_size(type) * ggml_type_size(type);
-                    benchmark_function(size, quantized_size, quantize_fn);
+                //if (params.op_dequantize_row_q) {
+                //    printf("  dequantize_row_q\n");
+                //    qfns.quantize_row_q(test_data1, test_q1, largest);
+                //    for (size_t size : params.test_sizes) {
+                //        printf("    %zu values (%.2f MB)\n", size, 4 * size / (float)(1024 * 1024));
+                //        auto quantize_fn = [&](void) {
+                //            qfns.dequantize_row_q(test_q1, test_out, size);
+                //            return test_out[0];
+                //        };
+                //        size_t quantized_size = size / ggml_blck_size(type) * ggml_type_size(type);
+                //        benchmark_function(size, quantized_size, quantize_fn);
+                //    }
+                //    printf("\n");
+                //}
+
+                //if (params.op_quantize_row_q_dot) {
+                //    printf("  quantize_row_q_dot\n");
+                //    for (size_t size : params.test_sizes) {
+                //        printf("    %zu values (%.2f MB)\n", size, 4 * size / (float)(1024 * 1024));
+                //        auto quantize_fn = [&](void) {
+                //            qfns.quantize_row_q_dot(test_data1, test_q1, size);
+                //            return test_q1[0];
+                //        };
+                //        size_t quantized_size = size / ggml_blck_size(type) * ggml_type_size(type);
+                //        benchmark_function(size, quantized_size, quantize_fn);
+                //    }
+                //    printf("\n");
+                //}
+
+                if (params.op_vec_dot_q) {
+                    printf("  vec_dot_q\n");
+                    qfns.quantize_row_q(test_data1, test_q1, largest);
+                    qfns.quantize_row_q(test_data2, test_q2, largest);
+                    for (size_t size : params.test_sizes) {
+                        printf("    %zu values (%.2f MB)\n", size, 4 * size / (float)(1024 * 1024));
+                        auto quantize_fn = [&](void) {
+                            float result;
+                            qfns.vec_dot_q(size, &result, test_q1, test_q2);
+                            return result;
+                        };
+                        size_t quantized_size = size / ggml_blck_size(type) * ggml_type_size(type);
+                        benchmark_function(size, quantized_size, quantize_fn);
+                    }
+                    printf("\n");
                 }
-                printf("\n");
             }
         }
     }

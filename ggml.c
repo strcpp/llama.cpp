@@ -374,9 +374,9 @@ static const uint64_t table_b2b_1[1 << 8] = { B8(10, 00) }; // (!b) << 4
 #if !defined(GGML_FP16_TO_FP32) || !defined(GGML_FP32_TO_FP16)
 
 inline static float ggml_lookup_fp16_to_fp32(ggml_fp16_t f) {
-    uint16_t s;
-    memcpy(&s, &f, sizeof(uint16_t));
-    return table_f32_f16[s];
+    //uint16_t s;
+    //memcpy(&s, &f, sizeof(uint16_t));
+    return table_f32_f16[f];
 }
 
 #define GGML_FP16_TO_FP32(x) ggml_lookup_fp16_to_fp32(x)
@@ -2338,24 +2338,78 @@ static void ggml_vec_dot_q4_0_q8_0(const int n, float * restrict s, const void *
     // Initialize accumulator with zeros
     __m256 acc = _mm256_setzero_ps();
 
-    // Main loop
+
+#if 0
     for (int i = 0; i < nb; ++i) {
         /* Compute combined scale for the block */
-        const __m256 d = _mm256_set1_ps( GGML_FP16_TO_FP32(x[i].d) * GGML_FP16_TO_FP32(y[i].d) );
+        const __m256 d = _mm256_set1_ps(GGML_FP16_TO_FP32(x[i].d) * GGML_FP16_TO_FP32(y[i].d));
 
         __m256i bx = bytes_from_nibbles_32(x[i].qs);
 
         // Now we have a vector with bytes in [ 0 .. 15 ] interval. Offset them into [ -8 .. +7 ] interval.
-        const __m256i off = _mm256_set1_epi8( 8 );
-        bx = _mm256_sub_epi8( bx, off );
+        const __m256i off = _mm256_set1_epi8(8);
+        bx = _mm256_sub_epi8(bx, off);
 
-        __m256i by = _mm256_loadu_si256((const __m256i *)y[i].qs);
+        __m256i by = _mm256_loadu_si256((const __m256i*)y[i].qs);
 
         const __m256 q = mul_sum_i8_pairs_float(bx, by);
 
         /* Multiply q with scale and accumulate */
-        acc = _mm256_fmadd_ps( d, q, acc );
+        acc = _mm256_fmadd_ps(d, q, acc);
     }
+
+#else
+    // Main loop
+    const __m256i off = _mm256_set1_epi8(8);
+    typedef union {
+        __m256 m;
+        float arr[8];
+    } float8;
+
+
+    for (int i = 0; i < nb; i += 8) {
+        /* Load 8 elements at a time into vectors */
+        float8 dx, dy;
+        dx.arr[0] = GGML_FP16_TO_FP32(x[i].d);
+        dx.arr[1] = GGML_FP16_TO_FP32(x[i + 1].d);
+        dx.arr[2] = GGML_FP16_TO_FP32(x[i + 2].d);
+        dx.arr[3] = GGML_FP16_TO_FP32(x[i + 3].d);
+        dx.arr[4] = GGML_FP16_TO_FP32(x[i + 4].d);
+        dx.arr[5] = GGML_FP16_TO_FP32(x[i + 5].d);
+        dx.arr[6] = GGML_FP16_TO_FP32(x[i + 6].d);
+        dx.arr[7] = GGML_FP16_TO_FP32(x[i + 7].d);
+
+        dy.arr[0] = GGML_FP16_TO_FP32(y[i].d);
+        dy.arr[1] = GGML_FP16_TO_FP32(y[i + 1].d);
+        dy.arr[2] = GGML_FP16_TO_FP32(y[i + 2].d);
+        dy.arr[3] = GGML_FP16_TO_FP32(y[i + 3].d);
+        dy.arr[4] = GGML_FP16_TO_FP32(y[i + 4].d);
+        dy.arr[5] = GGML_FP16_TO_FP32(y[i + 5].d);
+        dy.arr[6] = GGML_FP16_TO_FP32(y[i + 6].d);
+        dy.arr[7] = GGML_FP16_TO_FP32(y[i + 7].d);
+
+        /* Compute combined scale for the block */
+        float8 d;
+        d.m = _mm256_mul_ps(dx.m, dy.m);
+
+        for (int j = 0; j < 8; ++j) {
+            __m256i bx = bytes_from_nibbles_32(x[i + j].qs);
+
+            // Now we have a vector with bytes in [ 0 .. 15 ] interval. Offset them into [ -8 .. +7 ] interval.
+            const __m256i off = _mm256_set1_epi8(8);
+            bx = _mm256_sub_epi8(bx, off);
+
+            __m256i by = _mm256_loadu_si256((const __m256i*)y[i + j].qs);
+
+            const __m256 q = mul_sum_i8_pairs_float(bx, by);
+
+            /* Multiply q with scale and accumulate */
+            acc = _mm256_fmadd_ps(_mm256_set1_ps(d.arr[j]), q, acc);
+        }
+
+    }
+#endif
+
 
     *s = hsum_float_8(acc);
 #elif defined(__AVX__)
